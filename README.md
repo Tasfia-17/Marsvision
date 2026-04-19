@@ -25,11 +25,6 @@ Output:
 
 ---
 
-## Demo
-
-| CLI - Live Agent Trace | Mission Control Dashboard |
-|---|---|
-| ![CLI](docs/screenshots/hermes_cli_mission.png) | ![Dashboard](docs/screenshots/dashboard.png) |
 
 **Example mission trace:**
 
