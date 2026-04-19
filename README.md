@@ -327,16 +327,7 @@ python cli.py
 | /status | Mission log |
 | Voice message | Transcribed via IonRouter, runs as mission |
 
----
 
-## Credits
-
-- ByteDance Seed Team - Seedream 5.0, Seedance 2.0, Seed 2.0 models
-- IonRouter - Multilingual speech-to-text
-- Snehal (@SnehalRekt) - Original Mars rover simulation base
-- Tasfia (@Tasfia-17) - MarsVision AI pipeline, Seedance integration, autonomous agent, training data export
-
----
 
 ## License
 
