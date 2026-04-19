@@ -22,3 +22,4 @@ async def transcribe(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
             return r.json().get("text", "").strip()
         # fallback
         return ""
+# IonRouter STT
