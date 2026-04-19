@@ -178,3 +178,4 @@ async def run_mission(goal: str, on_event=None) -> dict:
 
 def get_trace() -> list[dict]:
     return _trace
+# Autonomous agent loop
