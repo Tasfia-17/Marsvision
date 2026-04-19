@@ -258,3 +258,4 @@ async def execute(*, scene_context: str, camera: str = "mastcam", duration: int 
         })
     except Exception as exc:
         return json.dumps({"success": False, "error": str(exc), "mode": mode})
+# Seedance 2.0 I2V pipeline
