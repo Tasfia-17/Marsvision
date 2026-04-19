@@ -1,7 +1,7 @@
-# MarsVision — Autonomous Mars Rover
+# MarsVision - Autonomous Mars Rover
 
-> **AI Lab: Seed Agents Challenge · Track 4 — Physical AI Simulation**
-> Built for the ByteDance Seed Agents Hackathon · Demo Day: May 2, 2026
+> **AI Lab: Seed Agents Challenge * Track 4 - Physical AI Simulation**
+> Built for the ByteDance Seed Agents Hackathon * Demo Day: May 2, 2026
 
 MarsVision is a fully autonomous Mars rover agent. Give it a natural language goal  it plans the mission, navigates real physics simulation, perceives the terrain using **Seedream 5.0**, generates cinematic footage with **Seedance 2.0**, and delivers a mission report to your Telegram. No waypoints. No scripted paths. Pure autonomous AI.
 
