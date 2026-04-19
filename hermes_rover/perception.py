@@ -125,3 +125,4 @@ async def generate_terrain_image(telemetry: dict, scene_context: str, output_dir
             "prompt_used": prompt,
             "size_kb": len(img_bytes) // 1024,
         }
+# Seedream 5.0 terrain perception
