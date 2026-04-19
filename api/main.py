@@ -240,3 +240,4 @@ async def mission_log_stream():
             await asyncio.sleep(0.5)
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+# FastAPI backend
