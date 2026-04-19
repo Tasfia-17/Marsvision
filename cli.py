@@ -151,3 +151,4 @@ async def run_cli():
 
 if __name__ == "__main__":
     asyncio.run(run_cli())
+# MarsVision CLI
