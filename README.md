@@ -370,9 +370,74 @@ gz sim simulation/worlds/mars_terrain.sdf
 
 | Criterion | Weight | Our Approach |
 |---|---|---|
-| **Video Output Quality** | 40% | Seedream 5.0 generates photorealistic terrain  Seedance 2.0 I2V animates it. Output: 4-5MB cinematic Mars footage per mission. |
-| **Agentic Execution** | 40% | 12-step visible trace: sense  safety check  reason  plan  navigate  re-sense  perceive  generate  learn  report. Agent recovers from hazards, saves learned behaviors. |
+| **Video Output Quality** | 40% | Seedream 5.0 generates photorealistic terrain - Seedance 2.0 I2V animates it. Output: 4-5MB cinematic Mars footage per mission. |
+| **Agentic Execution** | 40% | 12-step visible trace: sense - safety check - reason - plan - navigate - re-sense - perceive - generate - learn - report. Agent recovers from hazards, saves learned behaviors. |
 | **Demo & Presentation** | 20% | Voice commands (IonRouter), live dashboard (WebSocket), Telegram delivery, 4 Seed models used end-to-end. |
+
+---
+
+## Video Output Quality (40%)
+
+MarsVision uses a two-stage AI pipeline that produces cinematic output no text-to-video tool can match:
+
+**Stage 1 - Seedream 5.0 terrain perception**
+
+The agent reads live telemetry (position, heading, tilt, LIDAR proximity, sol number) and passes it to Seedream 5.0, which generates a photorealistic Mars terrain image grounded in the rover's actual physical state. The image reflects the correct terrain type (crater rim, rocky field, flat plains), lighting angle for the sol, and hazard proximity.
+
+**Stage 2 - Seedance 2.0 image-to-video**
+
+That terrain image becomes the reference frame for Seedance 2.0 I2V. The model animates it with cinematic motion: dolly forward, dust particles, atmospheric haze, sol lighting. Because the input is a real reference image (not a text prompt), the output is visually consistent and grounded in the rover's actual environment.
+
+**Result:** 4-5MB, 720p, 5-second cinematic clips with native audio. Mode: `i2v_seedream`.
+
+---
+
+## Agentic Execution (40%)
+
+Every mission runs a 12-step autonomous loop. The agent does not follow a script - it reads sensors, reasons about what to do, acts, checks results, and learns.
+
+```
+Step 1   SENSE       Read IMU, LIDAR, odometry from physics bridge
+Step 2   SAFETY      Check tilt (<25 deg limit) and obstacle proximity
+Step 3   REASON      Seed 2.0 plans route and writes scene context
+Step 4   PLAN        Parse LLM output, set target coordinates
+Step 5   ACT         navigate_to(x, y) with hazard checks
+Step 6   RE-SENSE    Confirm arrival, read final position
+Step 7   PERCEIVE    Seedream 5.0 generates terrain image from telemetry
+Step 8   GENERATE    Seedance 2.0 I2V animates terrain image
+Step 9   LEARN       Save successful strategy to SQLite with confidence score
+Step 10  REPORT      Generate PDF mission report
+Step 11  DELIVER     Send video + report to Telegram
+Step 12  LOG         Emit all events to SSE stream for live dashboard
+```
+
+**Hazard recovery:** If LIDAR detects an obstacle under 1.5m, the agent backs up, replans, and continues. If tilt exceeds 25 degrees, the mission halts and reports the failure explicitly.
+
+**Persistent learning:** Successful strategies are stored in SQLite with a confidence score. On future missions with similar context, the agent retrieves and reuses the highest-confidence behavior instead of replanning from scratch.
+
+**Visible reasoning:** Every step emits a named event to the SSE stream. The dashboard and CLI show the full trace in real time so judges can see the agent thinking, not just the output.
+
+---
+
+## Vision - After the Hackathon
+
+**Short term (1-3 months)**
+
+- Connect to real Gazebo simulation with full physics (already scaffolded in `simulation/`)
+- Add multi-rover coordination: one rover scouts, another films
+- Integrate Seedance 2.0 reference-to-video with up to 9 reference images for richer scene continuity across a full mission
+
+**Medium term (3-12 months)**
+
+- Replace mock physics bridge with real robot hardware (ROS 2 compatible interface already in `bridge/sensor_bridge.py`)
+- Use generated synthetic video data to train robot manipulation policies (the GoferAI / DreamGen approach)
+- Build a mission replay system: any past mission can be re-rendered cinematically from its telemetry log
+
+**Long term**
+
+MarsVision is the foundation for AI-native physical simulation: environments where the agent's perception, reasoning, and world-model are all AI-generated rather than hand-authored. The same pipeline applies to warehouse robotics, autonomous vehicles, and any domain where generating synthetic training data from agent behavior is valuable.
+
+The video economy for physical AI is unsolved. MarsVision is the first step toward agents that document their own work cinematically.
 
 ---
 
