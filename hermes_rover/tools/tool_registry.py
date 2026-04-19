@@ -11,8 +11,9 @@ from . import memory_tool
 from . import report_tool
 from . import camera_tool
 from . import scene_video_tool
+from . import training_data_tool
 
-_TOOL_MODULES = [drive_tool, sensor_tool, navigate_tool, hazard_tool, memory_tool, report_tool, camera_tool, scene_video_tool]
+_TOOL_MODULES = [drive_tool, sensor_tool, navigate_tool, hazard_tool, memory_tool, report_tool, camera_tool, scene_video_tool, training_data_tool]
 _NAME_TO_MODULE = {m.TOOL_SCHEMA["name"]: m for m in _TOOL_MODULES}
 
 

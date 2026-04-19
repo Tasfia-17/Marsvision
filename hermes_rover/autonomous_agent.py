@@ -162,6 +162,18 @@ async def run_mission(goal: str, on_event=None) -> dict:
     except Exception:
         pass
 
+    # ── Phase 7b: EXPORT TRAINING DATA ───────────────────────────────────
+    try:
+        from hermes_rover.tools.training_data_tool import execute as export_data
+        td_result = json.loads(await export_data(
+            mission_trace=_trace,
+            video_path=video_result.get("file_path", ""),
+            outcome="success" if video_result["success"] else "partial",
+        ))
+        emit("training_data", f"Dataset episode saved: {td_result.get('episode_id')} | Total episodes: {td_result.get('total_episodes')}", td_result)
+    except Exception as e:
+        emit("training_data", f"Dataset export skipped: {e}")
+
     # ── Phase 8: REPORT ───────────────────────────────────────────────────
     report = {
         "goal": goal,
