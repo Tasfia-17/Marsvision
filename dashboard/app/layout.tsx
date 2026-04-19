@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HERMES Mars Rover - Mission Control",
-  description: "Live Mars rover simulation dashboard",
+  title: "MarsVision — Mission Control",
+  description: "Autonomous Mars rover · Seedream 5.0 · Seedance 2.0 · Seed 2.0",
 };
 
 export default function RootLayout({
