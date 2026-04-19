@@ -127,3 +127,4 @@ def get_state_for_video() -> dict:
         "mission_elapsed_s": round(_state.mission_elapsed_s, 1),
         "distance_from_origin_m": round(math.sqrt(_state.x**2 + _state.y**2), 2),
     }
+# MarsVision Physics Bridge v1.0
