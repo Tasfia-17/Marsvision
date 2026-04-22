@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-04-22T05:19:51Z",
+  "models": {
+    "image": "seedream-5-0-260128",
+    "video": "dreamina-seedance-2-0-fast-260128"
+  },
+  "images": [
+    {
+      "name": "bedrock_scientific_target",
+      "file": "bedrock_scientific_target.jpg",
+      "size_kb": 707
+    },
+    {
+      "name": "crater_rim_golden_hour",
+      "file": "crater_rim_golden_hour.jpg",
+      "size_kb": 665
+    },
+    {
+      "name": "dust_storm_approaching",
+      "file": "dust_storm_approaching.jpg",
+      "size_kb": 700
+    },
+    {
+      "name": "jezero_crater_dawn",
+      "file": "jezero_crater_dawn.jpg",
+      "size_kb": 629
+    },
+    {
+      "name": "lander_return_path",
+      "file": "lander_return_path.jpg",
+      "size_kb": 744
+    },
+    {
+      "name": "olympus_mons_vista",
+      "file": "olympus_mons_vista.jpg",
+      "size_kb": 747
+    },
+    {
+      "name": "rocky_field_midday",
+      "file": "rocky_field_midday.jpg",
+      "size_kb": 690
+    },
+    {
+      "name": "sand_dunes_afternoon",
+      "file": "sand_dunes_afternoon.jpg",
+      "size_kb": 786
+    }
+  ],
+  "videos": [],
+  "note": "Videos pending \u2014 video API requires paid credits on BytePlus account"
+}
