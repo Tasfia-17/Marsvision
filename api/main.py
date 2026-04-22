@@ -19,7 +19,8 @@ from pydantic import BaseModel
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from bridge.mock_sensors import get_snapshot, drive, navigate_to, get_state_for_video
-from hermes_rover.tools.scene_video_tool import execute as generate_video
+from hermes_rover.tools.scene_video_tool import execute as generate_video, generate_mission_gallery_videos
+from hermes_rover.perception import generate_terrain_image, generate_terrain_gallery
 from hermes_rover.autonomous_agent import run_mission, get_trace
 from hermes_rover.memory import memory_manager as mm
 
@@ -53,6 +54,11 @@ class NavigateCommand(BaseModel):
 class VideoCommand(BaseModel):
     scene_context: str
     duration: int = 5
+
+class GalleryCommand(BaseModel):
+    scene_context: str
+    image_count: int = 4
+    video_count: int = 2
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -189,6 +195,90 @@ def get_latest_terrain():
     if not images:
         raise HTTPException(404, "No terrain images yet")
     return FileResponse(images[0], media_type="image/jpeg")
+
+
+@app.get("/terrain/gallery")
+def get_terrain_gallery(limit: int = 12):
+    """Return metadata for the latest N terrain images."""
+    img_dir = Path("~/rover_images").expanduser()
+    if not img_dir.exists():
+        return {"images": []}
+    images = sorted(img_dir.glob("*.jpg"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    return {
+        "images": [
+            {"file": p.name, "path": str(p), "size_kb": p.stat().st_size // 1024, "ts": p.stat().st_mtime}
+            for p in images
+        ]
+    }
+
+
+@app.get("/terrain/gallery/{filename}")
+def get_terrain_image(filename: str):
+    img_path = Path("~/rover_images").expanduser() / filename
+    if not img_path.exists():
+        raise HTTPException(404, "Image not found")
+    return FileResponse(img_path, media_type="image/jpeg")
+
+
+@app.post("/terrain/generate")
+async def generate_terrain(cmd: VideoCommand):
+    """Generate a single high-quality terrain image via Seedream 5.0."""
+    telemetry = get_state_for_video()
+    result = await generate_terrain_image(telemetry, cmd.scene_context)
+    return result
+
+
+@app.post("/gallery/generate")
+async def generate_gallery(cmd: GalleryCommand):
+    """Generate a full mission gallery: multiple images + videos in parallel."""
+    telemetry = get_state_for_video()
+
+    # Build varied scene contexts for richer gallery
+    image_contexts = [
+        cmd.scene_context,
+        cmd.scene_context + " wide panoramic survey",
+        cmd.scene_context + " close-up scientific target",
+        cmd.scene_context + " hazard assessment",
+    ][:cmd.image_count]
+
+    video_contexts = [
+        cmd.scene_context,
+        cmd.scene_context + " cinematic exploration",
+    ][:cmd.video_count]
+
+    images_task = generate_terrain_gallery(telemetry, cmd.scene_context, count=cmd.image_count)
+    videos_task = generate_mission_gallery_videos(video_contexts, telemetry)
+
+    images, videos = await asyncio.gather(images_task, videos_task)
+
+    return {
+        "images": images,
+        "videos": videos,
+        "total_generated": len(images) + len(videos),
+    }
+
+
+@app.get("/video/gallery")
+def get_video_gallery(limit: int = 8):
+    """Return metadata for the latest N generated videos."""
+    video_dir = Path("~/rover_videos").expanduser()
+    if not video_dir.exists():
+        return {"videos": []}
+    videos = sorted(video_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]
+    return {
+        "videos": [
+            {"file": p.name, "path": str(p), "size_kb": p.stat().st_size // 1024, "ts": p.stat().st_mtime}
+            for p in videos
+        ]
+    }
+
+
+@app.get("/video/gallery/{filename}")
+def get_video_file(filename: str):
+    video_path = Path("~/rover_videos").expanduser() / filename
+    if not video_path.exists():
+        raise HTTPException(404, "Video not found")
+    return FileResponse(video_path, media_type="video/mp4")
 
 
 @app.get("/video/latest")

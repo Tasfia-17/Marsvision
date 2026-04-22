@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { getStatus, sendCommand, getHazards, getSessions, getSession } from '../lib/api'
 import { getWsStreamUrl } from '../lib/config'
 import type { RoverTelemetry, MissionEvent, Hazard, Session } from '../lib/types'
+import MediaGallery from '../components/MediaGallery'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -339,6 +340,7 @@ export default function Dashboard() {
         <div className="col-span-8 space-y-4">
           <MapView telemetry={telemetry} hazards={hazards} posHistory={posHistory}/>
           <VideoPanel videoUrl={videoUrl} terrainUrl={terrainUrl}/>
+          <MediaGallery/>
           <SessionTimeline/>
         </div>
         <div className="col-span-4 space-y-4">
