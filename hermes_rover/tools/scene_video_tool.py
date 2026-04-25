@@ -1,8 +1,16 @@
 """
 Generate a cinematic Seedance 2.0 video from live rover telemetry.
-Uses real Gazebo camera frames as reference images when available (I2V),
-falls back to Seedream 5.0 AI terrain image → Seedance 2.0 I2V.
-Supports API key rotation across 4 keys for high-volume generation.
+
+Pipeline (in priority order):
+  1. Multi-reference I2V — up to 4 Seedream 5.0 frames (mastcam + navcam +
+     hazcam_front + prior frame) fed simultaneously as [Image1]..[Image4].
+     Seedance 2.0 supports up to 9 images + 3 videos + 3 audio per request.
+  2. Single-reference I2V — one Seedream 5.0 frame (fallback).
+  3. T2V — text-only prompt (final fallback, no image available).
+
+Multi-reference produces visually consistent, spatially grounded video because
+the model sees the scene from multiple angles simultaneously — matching the
+DreamGen approach of grounding video generation in real sensor observations.
 """
 from __future__ import annotations
 
@@ -20,8 +28,10 @@ TOOL_SCHEMA = {
     "name": "generate_scene_video",
     "description": (
         "Generate a cinematic Seedance 2.0 video of what the rover currently sees. "
-        "Captures a real camera frame from the rover or generates one via Seedream 5.0, "
-        "then animates it with Seedance 2.0 I2V. Falls back to T2V if needed. "
+        "Uses multi-reference I2V: captures frames from mastcam, navcam, and hazcam "
+        "simultaneously via Seedream 5.0, then feeds all as [Image1]..[ImageN] to "
+        "Seedance 2.0 for spatially-grounded cinematic animation. "
+        "Falls back to single-reference I2V, then T2V. "
         "Returns a local video file path and MEDIA: tag for Telegram delivery."
     ),
     "parameters": {
@@ -166,34 +176,87 @@ def _get_telemetry() -> dict:
         return {"position": {"x": 0, "y": 0}, "heading_deg": 45, "tilt_deg": 2.1, "lidar_min_m": 4.5}
 
 
+async def _capture_multi_reference(
+    cameras: list[str], telemetry: dict, scene_context: str
+) -> list[str]:
+    """
+    Capture frames from multiple rover cameras in parallel via Seedream 5.0.
+    Returns list of base64-encoded images (may be shorter than cameras list on failure).
+    """
+    from hermes_rover.perception import generate_terrain_image
+
+    async def _one(camera: str) -> str | None:
+        # Try real Gazebo first
+        try:
+            import subprocess
+            result = subprocess.run(["gz", "topic", "--list"], capture_output=True, timeout=2)
+            if result.returncode == 0:
+                from hermes_rover.tools.camera_tool import execute as cap
+                res = json.loads(await cap(camera=camera))
+                if res.get("success"):
+                    img_path = Path(res["file_path"])
+                    if img_path.exists():
+                        return base64.b64encode(img_path.read_bytes()).decode()
+        except Exception:
+            pass
+        # Fall back to Seedream 5.0
+        try:
+            result = await generate_terrain_image(telemetry, scene_context, camera=camera)
+            if result.get("success"):
+                return result["b64_data"]
+        except Exception as e:
+            print(f"Seedream [{camera}] error: {e}")
+        return None
+
+    results = await asyncio.gather(*[_one(c) for c in cameras])
+    return [r for r in results if r is not None]
+
+
 async def _capture_camera_frame(camera: str, telemetry: dict, scene_context: str) -> str | None:
-    """
-    Get a camera frame for I2V:
-    1. Try real Gazebo camera (if running)
-    2. Fall back to Seedream 5.0 AI-generated terrain image
-    """
-    try:
-        import subprocess
-        result = subprocess.run(["gz", "topic", "--list"], capture_output=True, timeout=2)
-        if result.returncode == 0:
-            from hermes_rover.tools.camera_tool import execute as cap
-            res = json.loads(await cap(camera=camera))
-            if res.get("success"):
-                img_path = Path(res["file_path"])
-                if img_path.exists():
-                    return base64.b64encode(img_path.read_bytes()).decode()
-    except Exception:
-        pass
+    """Single-camera capture (kept for backward compat)."""
+    frames = await _capture_multi_reference([camera], telemetry, scene_context)
+    return frames[0] if frames else None
 
-    try:
-        from hermes_rover.perception import generate_terrain_image
-        result = await generate_terrain_image(telemetry, scene_context, camera=camera)
-        if result.get("success"):
-            return result["b64_data"]
-    except Exception as e:
-        print(f"Seedream perception error: {e}")
 
-    return None
+async def _create_multi_ref_i2v_task(
+    images_b64: list[str], motion_prompt: str, duration: int
+) -> str:
+    """
+    Seedance 2.0 multi-reference I2V.
+    Sends up to 9 images as [Image1]..[ImageN] references in a single request.
+    The model uses all frames to maintain spatial consistency across the video.
+    """
+    api_key = _next_key()
+    # Build content: images first, then the annotated text prompt
+    content = []
+    ref_tags = []
+    for i, b64 in enumerate(images_b64[:9], start=1):
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        ref_tags.append(f"[Image{i}]")
+
+    # Annotate prompt with reference tags so model knows which image is which
+    camera_labels = ["mastcam wide view", "navcam navigation view", "hazcam obstacle view", "prior frame"]
+    annotations = ", ".join(
+        f"{ref_tags[i]} {camera_labels[i]}"
+        for i in range(len(ref_tags))
+    )
+    annotated_prompt = f"{motion_prompt}. Reference frames: {annotations}."
+    content.append({"type": "text", "text": annotated_prompt})
+
+    payload = {
+        "model": _MODEL_I2V,
+        "content": content,
+        "parameters": {"duration": duration, "resolution": "1080p", "watermark": False},
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            f"{_BASE_URL}/contents/generations/tasks",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data.get("id") or data["data"]["task_id"]
 
 
 async def _create_i2v_task(image_b64: str, motion_prompt: str, duration: int) -> str:
@@ -277,10 +340,18 @@ async def execute(*, scene_context: str, camera: str = "mastcam", duration: int 
     prompt_used = ""
 
     try:
-        image_b64 = await _capture_camera_frame(camera, telemetry, scene_context)
-        if image_b64:
-            motion_prompt = _build_motion_prompt(scene_context, telemetry)
-            task_id = await _create_i2v_task(image_b64, motion_prompt, min(max(duration, 4), 5))
+        motion_prompt = _build_motion_prompt(scene_context, telemetry)
+
+        # Attempt multi-reference I2V: mastcam + navcam + hazcam_front in parallel
+        all_cameras = ["mastcam", "navcam", "hazcam_front"]
+        images_b64 = await _capture_multi_reference(all_cameras, telemetry, scene_context)
+
+        if len(images_b64) >= 2:
+            task_id = await _create_multi_ref_i2v_task(images_b64, motion_prompt, min(max(duration, 4), 5))
+            mode = f"multi_ref_i2v_{len(images_b64)}frames"
+            prompt_used = motion_prompt
+        elif len(images_b64) == 1:
+            task_id = await _create_i2v_task(images_b64[0], motion_prompt, min(max(duration, 4), 5))
             mode = "i2v_seedream"
             prompt_used = motion_prompt
         else:
@@ -303,6 +374,7 @@ async def execute(*, scene_context: str, camera: str = "mastcam", duration: int 
         return json.dumps({
             "success": True,
             "mode": mode,
+            "reference_frames": len(images_b64) if "multi_ref" in mode else 1,
             "file_path": str(output_path),
             "media_tag": f"MEDIA:{output_path}",
             "prompt_used": prompt_used,

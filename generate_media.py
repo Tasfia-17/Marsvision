@@ -193,6 +193,39 @@ async def create_video_task(prompt: str) -> str:
         return data.get("id") or data["data"]["task_id"]
 
 
+async def create_multi_ref_video_task(image_paths: list[Path], motion_prompt: str) -> str:
+    """
+    Seedance 2.0 multi-reference I2V.
+    Sends up to 9 existing terrain images as [Image1]..[ImageN] references.
+    Produces spatially consistent video grounded in real generated terrain.
+    """
+    content = []
+    ref_tags = []
+    for i, img_path in enumerate(image_paths[:9], start=1):
+        b64 = base64.b64encode(img_path.read_bytes()).decode()
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
+        ref_tags.append(f"[Image{i}]")
+
+    annotations = ", ".join(f"{ref_tags[i]} reference frame {i+1}" for i in range(len(ref_tags)))
+    annotated_prompt = f"{motion_prompt}. Visual references: {annotations}."
+    content.append({"type": "text", "text": annotated_prompt})
+
+    payload = {
+        "model": MODEL_VIDEO,
+        "content": content,
+        "parameters": {"duration": 5, "resolution": "1080p", "watermark": False},
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(
+            f"{BASE_URL}/contents/generations/tasks",
+            headers={"Authorization": f"Bearer {key()}", "Content-Type": "application/json"},
+            json=payload,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return data.get("id") or data["data"]["task_id"]
+
+
 async def poll_video(task_id: str) -> str:
     deadline = time.time() + MAX_WAIT
     async with httpx.AsyncClient(timeout=30) as client:
@@ -219,7 +252,7 @@ async def poll_video(task_id: str) -> str:
     raise TimeoutError(f"Task {task_id} timed out")
 
 
-async def generate_video(name: str, prompt: str) -> dict:
+async def generate_video(name: str, prompt: str, ref_images: list[Path] | None = None) -> dict:
     out_path = OUT_VIDEOS / f"{name}.mp4"
     if out_path.exists():
         print(f"  [skip] {name}.mp4 already exists")
@@ -227,16 +260,24 @@ async def generate_video(name: str, prompt: str) -> dict:
 
     print(f"  [video] submitting {name}...")
     try:
-        task_id = await create_video_task(prompt)
-        print(f"  [video] task {task_id[:20]}... polling...")
+        # Use multi-reference I2V if terrain images are available
+        if ref_images and len(ref_images) >= 1:
+            print(f"  [video] multi-reference I2V with {len(ref_images)} terrain frames...")
+            task_id = await create_multi_ref_video_task(ref_images, prompt)
+            mode = f"multi_ref_i2v_{len(ref_images)}frames"
+        else:
+            task_id = await create_video_task(prompt)
+            mode = "t2v"
+
+        print(f"  [video] task {task_id[:20]}... polling ({mode})...")
         video_url = await poll_video(task_id)
         async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
             r = await client.get(video_url)
             r.raise_for_status()
             out_path.write_bytes(r.content)
         size_kb = out_path.stat().st_size // 1024
-        print(f"  [done]  {name}.mp4 — {size_kb}KB")
-        return {"name": name, "path": str(out_path), "size_kb": size_kb}
+        print(f"  [done]  {name}.mp4 — {size_kb}KB ({mode})")
+        return {"name": name, "path": str(out_path), "size_kb": size_kb, "mode": mode}
     except Exception as e:
         print(f"  [error] {name}: {e}")
         return {"name": name, "error": str(e)}
@@ -248,15 +289,37 @@ async def main():
     print(f"Generating {len(IMAGE_PROMPTS)} images in parallel (Seedream 5.0)...")
     image_results = await asyncio.gather(*[generate_image(n, p) for n, p in IMAGE_PROMPTS])
 
-    print(f"\nGenerating {len(VIDEO_PROMPTS)} videos (Seedance 2.0, 1080p 5s each)...")
+    # Collect successfully generated terrain images for multi-reference I2V
+    terrain_images = [
+        OUT_IMAGES / f"{r['name']}.jpg"
+        for r in image_results
+        if "size_kb" in r and (OUT_IMAGES / f"{r['name']}.jpg").exists()
+    ]
+    print(f"\n{len(terrain_images)} terrain images available for multi-reference I2V")
+
+    # Map each video to its most relevant reference images (up to 4 per video)
+    VIDEO_REF_MAP = {
+        "rover_exploration_dolly":  ["jezero_crater_dawn", "rocky_field_midday", "lander_return_path"],
+        "dust_storm_dramatic":      ["dust_storm_approaching", "rocky_field_midday"],
+        "crater_rim_reveal":        ["crater_rim_golden_hour", "jezero_crater_dawn", "olympus_mons_vista"],
+        "scientific_sample_orbital":["bedrock_scientific_target", "rocky_field_midday", "sand_dunes_afternoon"],
+    }
+
+    print(f"\nGenerating {len(VIDEO_PROMPTS)} videos (Seedance 2.0 multi-reference I2V, 1080p 5s each)...")
     video_results = []
     for name, prompt in VIDEO_PROMPTS:
-        result = await generate_video(name, prompt)
+        ref_names = VIDEO_REF_MAP.get(name, [])
+        ref_paths = [OUT_IMAGES / f"{n}.jpg" for n in ref_names if (OUT_IMAGES / f"{n}.jpg").exists()]
+        # Fall back to first 3 available terrain images if no specific refs
+        if not ref_paths:
+            ref_paths = terrain_images[:3]
+        result = await generate_video(name, prompt, ref_images=ref_paths)
         video_results.append(result)
 
     manifest = {
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "models": {"image": MODEL_IMAGE, "video": MODEL_VIDEO},
+        "pipeline": "Seedream5.0 → Seedance2.0 multi-reference I2V",
         "images": image_results,
         "videos": video_results,
     }

@@ -1,5 +1,55 @@
 # MarsVision Changelog
 
+## [Sprint — Apr 25 2026] Data Pipeline Upgrade
+
+### Seedance 2.0 Multi-Reference I2V (`hermes_rover/tools/scene_video_tool.py`)
+
+**Before:** Single Seedream 5.0 frame → Seedance 2.0 I2V (1 reference image)
+
+**After:** 3 simultaneous camera angles (mastcam + navcam + hazcam_front) generated in parallel via Seedream 5.0, all fed as `[Image1]`, `[Image2]`, `[Image3]` to Seedance 2.0 multi-reference I2V in a single request.
+
+- `_capture_multi_reference()` — parallel async capture from all 3 cameras
+- `_create_multi_ref_i2v_task()` — builds multi-reference content payload with annotated reference tags
+- `execute()` — tries multi-ref (≥2 frames) → single-ref → T2V fallback chain
+- Mode field now reports `multi_ref_i2v_3frames` / `i2v_seedream` / `t2v`
+- `reference_frames` count included in response
+
+Why it matters: Seedance 2.0 supports up to 9 images + 3 videos + 3 audio per request. Using 3 simultaneous camera angles gives the model spatial context — it sees the terrain from wide (navcam), telephoto (mastcam), and close obstacle (hazcam) perspectives simultaneously, producing more consistent and grounded video than single-frame I2V.
+
+### RLDS-Compatible Training Data Export (`hermes_rover/tools/training_data_tool.py`)
+
+Complete rewrite. Now mirrors the NVIDIA DreamGen 4-stage pipeline:
+
+**Stage 1** — Parse mission trace into raw observations  
+**Stage 2** — Pseudo-action extraction via finite-difference inverse dynamics  
+**Stage 3** — Annotate with language instructions and reward signals  
+**Stage 4** — Export as RLDS-compatible JSON
+
+New features:
+- `_extract_action_vector()` — 6-DOF continuous action vector `[dx, dy, dz, d_roll, d_pitch, d_yaw]` inferred from consecutive observation pairs
+- `_compute_reward()` — shaped reward: +1.0 success, -1.0 safety halt, +0.3 video generated, +0.1 nav step, -0.2 hazard proximity, -0.3 dangerous tilt
+- `_build_state_vector()` — compact 7D state `[x, y, heading, tilt, lidar, battery, distance]`
+- RLDS standard fields: `language_instruction`, `steps[].observation`, `steps[].action`, `steps[].reward`, `steps[].is_terminal`
+- Dataset index tracks aggregate stats: success/failure/partial counts, total distance, total steps
+- Compatible with: BC, DAgger, IQL, ACT, RT-2, OpenVLA
+
+### Multi-Reference Video Generation (`generate_media.py`)
+
+- `create_multi_ref_video_task()` — new function, sends existing terrain images as multi-reference to Seedance 2.0
+- `VIDEO_REF_MAP` — maps each video scene to its most relevant terrain images (e.g. crater rim video uses `crater_rim_golden_hour.jpg` + `jezero_crater_dawn.jpg` + `olympus_mons_vista.jpg`)
+- `generate_video()` — now accepts `ref_images` list, uses multi-ref I2V when available
+- `main()` — collects all generated terrain images, passes relevant subset to each video
+
+### Self-Running Demo (`demo.py`)
+
+New file. Judges can run `python demo.py` with zero config to see the full pipeline:
+- Prints live telemetry
+- Runs autonomous mission with colored real-time trace
+- Shows mission summary with outcome, distance, video mode, dataset path
+- Saves `demo_output.json` with full trace summary
+
+---
+
 ## [Sprint — Apr 22 2026] Award Submission Push
 
 ### AI Vision Pipeline (Seedream 5.0 + Seedance 2.0)
