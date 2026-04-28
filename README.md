@@ -3,7 +3,7 @@
 
 MarsVision is a fully autonomous Mars rover agent that navigates real physics simulation, perceives its environment using Seedream 5.0, generates cinematic training footage with Seedance 2.0, and exports structured robot training datasets - all from a single natural language goal.
 
-No waypoints. No scripted paths. Pure autonomous AI that generates its own training data.
+No waypoints.. No scripted paths. Pure autonomous AI that generates its own training data.
 
 ---
 
